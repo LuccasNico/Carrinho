@@ -33,16 +33,16 @@ function listProducts(){
     for (let prod of products) {
         console.log(`${prod.id_prod} | ${prod.name_prod} | ${prod.price_prod}`);
     }
-    console.log('\n\n'); // Linha em branco para melhor formatação
+    console.log('\n\n'); // Blank line for readability
 }
 function addProduct(name,price){
-    // Validação do name: deve ser string não vazia
+    // Name validation: must be a non-empty string
     if (typeof name !== 'string' || name.trim() === '') {
         throw new Error('Invalid value for name: must be a non-empty string.');
     }
-    name = name.trim();  // Remove espaços extras
+    name = name.trim();  // Remove extra spaces
 
-    // Validação do price: deve ser número positivo
+    // Price validation: must be a positive number
     if (typeof price !== 'number' || isNaN(price) || price <= 0) {
         throw new Error('Invalid value for price: must be a positive number.');
     }
@@ -61,11 +61,45 @@ function deleteProductByID(id){
     }
 }
 
+function updateProduct(id, newName, newPrice){
+    // ID validation: must be a positive integer
+    if (!Number.isInteger(id) || id <= 0) {
+        throw new Error('Invalid ID: must be a positive integer.');
+    }
+
+    // Name validation: must be a non-empty string
+    if (typeof newName !== 'string' || newName.trim() === '') {
+        throw new Error('Invalid product name: must be a non-empty string.');
+    }
+    newName = newName.trim();  // Remove extra spaces
+
+    // Price validation: must be a positive number
+    if (typeof newPrice !== 'number' || isNaN(newPrice) || newPrice <= 0) {
+        throw new Error('Invalid product price: must be a positive number greater than 0.');
+    }
+
+    // Check if the product exists
+    const checkStmt = db.prepare('SELECT id_prod FROM PRODUCTS WHERE id_prod = ?');
+    if (!checkStmt.get(id)) {
+        throw new Error(`Product with ID ${id} not found.`);
+    }
+
+    // Update
+    const stmt = db.prepare('UPDATE PRODUCTS SET name_prod = ?, price_prod = ? WHERE id_prod = ?');
+    const result = stmt.run(newName, newPrice, id);
+    if (result.changes > 0) {
+        console.log(`Product with ID ${id} updated.`);
+        return new product(id, newName, newPrice);
+    } else {
+        throw new Error(`Failed to update product with ID ${id}.`);
+    }
+}
+
 async function menuDatabase() {
     while (true) {
         const prompt = new Select({
             message: 'Database Menu:',
-            choices: ['Add Product', 'Delete Product', 'List Products', 'Back']
+            choices: ['Add Product', 'Delete Product', 'Update Product', 'Back']
         });
         
         listProducts();
@@ -84,7 +118,7 @@ async function menuDatabase() {
                     const newProduct = addProduct(name, price);
                     console.log(`Product added: ${JSON.stringify(newProduct)}`);
                 } catch (error) {
-                    console.log(`Erro ao adicionar produto: ${error.message}`);
+                    console.log(`Error adding product: ${error.message}`);
                 }
                 break;
                 
@@ -94,6 +128,38 @@ async function menuDatabase() {
                 
                 deleteProductByID(deleteId);
                 break;
+            
+            case 'Update Product':
+                const updateIdPrompt = new Input({ message: 'Enter product ID to update:' });
+                const updateIdRaw = await updateIdPrompt.run();
+                const updateId = parseInt(updateIdRaw, 10);
+                if (Number.isNaN(updateId) || updateId <= 0) {
+                    console.log('Invalid ID: must be a positive integer.');
+                    break;
+                }
+                
+                const updateNamePrompt = new Input({ message: 'Enter new product name:' });
+                const updateName = (await updateNamePrompt.run()).trim();
+                if (!updateName) {
+                    console.log('Invalid name: must be a non-empty string.');
+                    break;
+                }
+                
+                const updatePricePrompt = new Input({ message: 'Enter new product price:' });
+                const updatePriceRaw = await updatePricePrompt.run();
+                const updatePrice = parseFloat(updatePriceRaw);
+                if (Number.isNaN(updatePrice) || updatePrice <= 0) {
+                    console.log('Invalid price: must be a positive number greater than 0.');
+                    break;
+                }
+                
+                try {
+                    const updatedProduct = updateProduct(updateId, updateName, updatePrice);
+                    console.log(`Product updated: ${JSON.stringify(updatedProduct)}`);
+                } catch (error) {
+                    console.log(`Error updating product: ${error.message}`);
+                }
+                break;
 
             case 'Back':
                 console.clear();
@@ -102,4 +168,4 @@ async function menuDatabase() {
     }
 }
 
-export {product, addProduct, deleteProductByID, menuDatabase};
+export {product, addProduct, deleteProductByID, updateProduct, menuDatabase};
