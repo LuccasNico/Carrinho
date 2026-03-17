@@ -1,6 +1,8 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import pkg from 'enquirer';
+const { Select, Input } = pkg;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.resolve(__dirname, '../database/StoreDB.db');
@@ -11,9 +13,6 @@ db.exec(`CREATE TABLE IF NOT EXISTS "PRODUCTS" (
 	"price_prod"	REAL,
 	PRIMARY KEY("id_prod" AUTOINCREMENT)
 )`);
-
-import pkg from 'enquirer';
-const { Select, Input } = pkg;
 
 class product{
     constructor(id,name,price){
@@ -168,4 +167,4 @@ async function menuDatabase() {
     }
 }
 
-export {product, addProduct, deleteProductByID, updateProduct, menuDatabase};
+export {product, addProduct, deleteProductByID, updateProduct, menuDatabase, listProducts};
