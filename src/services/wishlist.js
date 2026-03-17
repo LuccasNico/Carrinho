@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import pkg from 'enquirer';
 import { listProducts } from './product.js';
+import { addToCart } from './cart.js';
 
 const { Select, Input } = pkg;
 
@@ -10,11 +11,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.resolve(__dirname, '../database/StoreDB.db');
 const db = new Database(dbPath);
 
-db.exec(`CREATE TABLE IF NOT EXISTS "CART" (
-    "id_cart" INTEGER,
+db.exec(`CREATE TABLE IF NOT EXISTS "WISHLIST" (
+    "id_wishlist" INTEGER,
     "id_prod" INTEGER NOT NULL,
     "qty" INTEGER NOT NULL,
-    PRIMARY KEY("id_cart" AUTOINCREMENT),
+    PRIMARY KEY("id_wishlist" AUTOINCREMENT),
     UNIQUE("id_prod"),
     FOREIGN KEY("id_prod") REFERENCES PRODUCTS("id_prod")
 )`);
@@ -24,7 +25,7 @@ function getProductById(id) {
     return stmt.get(id);
 }
 
-function addToCart(idProd, qty) {
+function addToWishlist(idProd, qty) {
     if (!Number.isInteger(idProd) || idProd <= 0) {
         throw new Error('Invalid product ID: must be a positive integer.');
     }
@@ -37,36 +38,36 @@ function addToCart(idProd, qty) {
         throw new Error(`Product with ID ${idProd} not found.`);
     }
 
-    const existing = db.prepare('SELECT qty FROM CART WHERE id_prod = ?').get(idProd);
+    const existing = db.prepare('SELECT qty FROM WISHLIST WHERE id_prod = ?').get(idProd);
     if (existing) {
-        db.prepare('UPDATE CART SET qty = qty + ? WHERE id_prod = ?').run(qty, idProd);
+        db.prepare('UPDATE WISHLIST SET qty = qty + ? WHERE id_prod = ?').run(qty, idProd);
     } else {
-        db.prepare('INSERT INTO CART (id_prod, qty) VALUES (?, ?)').run(idProd, qty);
+        db.prepare('INSERT INTO WISHLIST (id_prod, qty) VALUES (?, ?)').run(idProd, qty);
     }
 }
 
-function removeFromCart(idProd) {
+function removeFromWishlist(idProd) {
     if (!Number.isInteger(idProd) || idProd <= 0) {
         throw new Error('Invalid product ID: must be a positive integer.');
     }
-    const result = db.prepare('DELETE FROM CART WHERE id_prod = ?').run(idProd);
+    const result = db.prepare('DELETE FROM WISHLIST WHERE id_prod = ?').run(idProd);
     if (result.changes === 0) {
-        throw new Error(`Product with ID ${idProd} not in cart.`);
+        throw new Error(`Product with ID ${idProd} not in wishlist.`);
     }
 }
 
-function viewCart() {
+function viewWishlist() {
     const rows = db.prepare(`
-        SELECT c.id_prod, p.name_prod, p.price_prod, c.qty,
-               (p.price_prod * c.qty) AS total
-        FROM CART c
-        JOIN PRODUCTS p ON p.id_prod = c.id_prod
-        ORDER BY c.id_prod
+        SELECT w.id_prod, p.name_prod, p.price_prod, w.qty,
+               (p.price_prod * w.qty) AS total
+        FROM WISHLIST w
+        JOIN PRODUCTS p ON p.id_prod = w.id_prod
+        ORDER BY w.id_prod
     `).all();
 
     console.clear();
     if (rows.length === 0) {
-        console.log('Cart is empty.');
+        console.log('Wishlist is empty.');
         return;
     }
 
@@ -80,48 +81,69 @@ function viewCart() {
     console.log(`\nTotal: ${grandTotal}\n`);
 }
 
-async function menuCart() {
+function buyWishlistItems() {
+    const rows = db.prepare('SELECT id_prod, qty FROM WISHLIST ORDER BY id_prod').all();
+    if (rows.length === 0) {
+        console.log('Wishlist is empty. Nothing to buy.');
+        return;
+    }
+
+    for (const row of rows) {
+        addToCart(row.id_prod, row.qty);
+    }
+    console.log(`Added ${rows.length} item(s) from wishlist to cart.`);
+}
+
+async function menuWishlist() {
     while (true) {
-        viewCart(); // Show cart contents before each action
+        viewWishlist(); // Show wishlist contents before each action
         const prompt = new Select({
-            message: 'Cart Menu:',
-            choices: ['Add to Cart', 'Remove from Cart', 'Back']
+            message: 'Wishlist Menu:',
+            choices: ['Add to Wishlist', 'Remove from Wishlist', 'Buy items', 'Back']
         });
-        
+
         const choice = await prompt.run();
-        
+
         switch (choice) {
-            case 'Add to Cart':
+            case 'Add to Wishlist':
                 listProducts();
                 const productIdPrompt = new Input({ message: 'Enter product ID to add:' });
                 const productIdRaw = await productIdPrompt.run();
                 const productId = parseInt(productIdRaw, 10);
-                
+
                 const quantityPrompt = new Input({ message: 'Enter quantity:' });
                 const quantityRaw = await quantityPrompt.run();
                 const quantity = parseInt(quantityRaw, 10);
-                
+
                 try {
-                    addToCart(productId, quantity);
-                    console.log(`Added ${quantity} of product ${productId} to cart.`);
+                    addToWishlist(productId, quantity);
+                    console.log(`Added ${quantity} of product ${productId} to wishlist.`);
                 } catch (error) {
-                    console.log(`Error adding to cart: ${error.message}`);
+                    console.log(`Error adding to wishlist: ${error.message}`);
                 }
                 break;
-                
-            case 'Remove from Cart':
+
+            case 'Remove from Wishlist':
                 const removeIdPrompt = new Input({ message: 'Enter product ID to remove:' });
                 const removeIdRaw = await removeIdPrompt.run();
                 const removeId = parseInt(removeIdRaw, 10);
-                
+
                 try {
-                    removeFromCart(removeId);
-                    console.log(`Removed product ${removeId} from cart.`);
+                    removeFromWishlist(removeId);
+                    console.log(`Removed product ${removeId} from wishlist.`);
                 } catch (error) {
-                    console.log(`Error removing from cart: ${error.message}`);
+                    console.log(`Error removing from wishlist: ${error.message}`);
                 }
                 break;
-                
+
+            case 'Buy items':
+                try {
+                    buyWishlistItems();
+                } catch (error) {
+                    console.log(`Error buying wishlist items: ${error.message}`);
+                }
+                break;
+
             case 'Back':
                 console.clear();
                 return;
@@ -129,4 +151,4 @@ async function menuCart() {
     }
 }
 
-export { menuCart, addToCart };
+export { menuWishlist };
